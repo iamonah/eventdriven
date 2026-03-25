@@ -7,19 +7,20 @@ import (
 	"time"
 
 	"github.com/iamonah/eventdriven/internal"
+	"github.com/rabbitmq/amqp091-go"
 	"golang.org/x/sync/errgroup"
 )
 
 func main() {
-	conn, err := internal.ConnectRabbitMq("user", "password", "localhost", "customers", 5672)
+	client, err := internal.NewRabbitMqClient(internal.RabbitMqConfig{
+		Username: "user",
+		Password: "password",
+		Host:     "localhost",
+		Vhost:    "customers",
+		Port:     5672,
+	})
 	if err != nil {
-		log.Fatal(err)
-	}
-	defer conn.Close()
-
-	client, err := internal.NewRabbitMqClient(conn)
-	if err != nil {
-		log.Fatal("failed to open client connection")
+		log.Fatalf("failed to open client connection: %v", err)
 	}
 	defer client.Close()
 
@@ -42,53 +43,35 @@ func main() {
 	g.SetLimit(10)
 
 	var blocking = make(chan int)
-	go func() {
-		for delivery := range payload {
-			msg := delivery
-			g.Go(func() error {
-				fmt.Println(string(msg.Body))
 
-				//if a  process fails
-				//return error
-				if !msg.Redelivered {
-					msg.Nack(false, true) // or false
-					return nil
-				}
-
-				if err := msg.Ack(false); err != nil {
-					log.Printf("ack failed, channel likely closed: %v", err)
-					return err
-				}
-				fmt.Printf("Acknowledge message %s\n", msg.MessageId)
-				return nil
-			})
-		}
-	}()
-
-	go func() {
-		for data := range message {
-			msg := data
-			g.Go(func() error {
-				fmt.Println(string(msg.Body))
-
-				//imagine a  process fails
-				//return error
-				if !msg.Redelivered {
-					msg.Nack(false, true) // or false
-					return nil
-				}
-
-				if err := msg.Ack(false); err != nil {
-					fmt.Printf("ack failed, channel likely closed: %v", err)
-					return err
-				}
-				log.Printf("Acknowledge message %s\n", msg.MessageId)
-				return nil
-			})
-		}
-	}()
+	go consumeMessages(payload, g)
+	go consumeMessages(message, g)
 
 	log.Println("consuming, to close the program press CTRL+C")
 
 	<-blocking
+}
+
+func consumeMessages(messages <-chan amqp091.Delivery, g *errgroup.Group) {
+	for delivery := range messages {
+		msg := delivery
+		g.Go(func() error {
+			//example of a work to be processed
+			if _, err := fmt.Println(string(msg.Body)); err != nil {
+				if msg.Redelivered {
+					msg.Nack(false, false) // or false
+					return nil
+				}
+				msg.Nack(false, true)
+				return nil
+			}
+
+			if err := msg.Ack(false); err != nil {
+				log.Printf("ack failed, channel likely closed: %v", err)
+				return err
+			}
+			fmt.Printf("Acknowledge message %s\n", msg.MessageId)
+			return nil
+		})
+	}
 }

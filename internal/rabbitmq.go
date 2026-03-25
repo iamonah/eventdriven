@@ -15,20 +15,26 @@ type RabbitClient struct {
 	ch *amqp.Channel
 }
 
-func ConnectRabbitMq(username, passwrd, host, vhost string, port int16) (*amqp.Connection, error) {
-	cleanPassword := url.QueryEscape(passwrd)
-	address := fmt.Sprintf("amqp://%s:%s@%s:%d/%s", username, cleanPassword, host, port, vhost)
+type RabbitMqConfig struct {
+	Username string
+	Password string
+	Host     string
+	Vhost    string
+	Port     int16
+}
+
+func NewRabbitMqClient(config RabbitMqConfig) (*RabbitClient, error) {
+	cleanPassword := url.QueryEscape(config.Password)
+	address := fmt.Sprintf("amqp://%s:%s@%s:%d/%s", config.Username, cleanPassword, config.Host, config.Port, config.Vhost)
 
 	conn, err := amqp.Dial(address)
 	if err != nil {
-		return nil, fmt.Errorf("dial rabbitmq %s", err)
+		return nil, fmt.Errorf("dial rabbitmq: %w", err)
 	}
-	return conn, nil
-}
 
-func NewRabbitMqClient(conn *amqp.Connection) (*RabbitClient, error) {
 	ch, err := conn.Channel()
 	if err != nil {
+		conn.Close()
 		return nil, err
 	}
 	return &RabbitClient{
@@ -38,7 +44,12 @@ func NewRabbitMqClient(conn *amqp.Connection) (*RabbitClient, error) {
 }
 
 func (rc RabbitClient) Close() error {
-	return rc.ch.Close() //close the client connection
+	if err := rc.ch.Close(); err != nil {
+		_ = rc.conn.Close()
+		return err
+	}
+
+	return rc.conn.Close()
 }
 
 func (rc RabbitClient) CreateQueue(queueName string, durable, autodelete bool) error {

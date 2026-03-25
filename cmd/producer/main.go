@@ -9,24 +9,24 @@ import (
 	"github.com/rabbitmq/amqp091-go"
 )
 
-//we have the customers_events exchange created on via the cli
+// we have the customers_events exchange created on via the cli
 func main() {
-	conn, err := internal.ConnectRabbitMq("user", "password", "localhost", "customers", 5672)
+	client, err := internal.NewRabbitMqClient(internal.RabbitMqConfig{
+		Username: "user",
+		Password: "password",
+		Host:     "localhost",
+		Vhost:    "customers",
+		Port:     5672,
+	})
 	if err != nil {
-		log.Fatal(err)
-	}
-	defer conn.Close()
-
-	client, err := internal.NewRabbitMqClient(conn)
-	if err != nil {
-		log.Fatal("failed to open client connection")
+		log.Fatalf("failed to open client connection: %v", err)
 	}
 	defer client.Close()
 
 	if err := client.CreateQueue("customer_created", true, false); err != nil {
 		panic(err)
 	}
-	if err := client.CreateQueue("customer_test", false, true); err != nil {
+	if err := client.CreateQueue("customer_test", true, false); err != nil {
 		panic(err)
 	}
 
@@ -37,22 +37,24 @@ func main() {
 		panic(err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := client.Send(ctx, "customer_events", "customers.created.us", amqp091.Publishing{
-		ContentType: "application/json",
-		DeliveryMode: amqp091.Persistent,
-		Body: []byte("A cool message between services"),
-	}); err != nil{
-		panic(err)
+	for i := 0; i < 10; i++ {
+		if err := client.Send(ctx, "customer_events", "customers.created.us", amqp091.Publishing{
+			ContentType:  "application/json",
+			DeliveryMode: amqp091.Persistent,
+			Body:         []byte("A cool message between services"),
+		}); err != nil {
+			panic(err)
+		}
 	}
 	//sending a transient message
 	if err := client.Send(ctx, "customer_events", "customers.test", amqp091.Publishing{
-		ContentType: "application/json",
+		ContentType:  "application/json",
 		DeliveryMode: amqp091.Transient,
-		Body: []byte("uncool undurable message"),
-	}); err != nil{
+		Body:         []byte("uncool undurable message"),
+	}); err != nil {
 		panic(err)
 	}
 	time.Sleep(time.Second * 60)
