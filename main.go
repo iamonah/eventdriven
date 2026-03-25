@@ -9,8 +9,9 @@ import (
 )
 
 func main() {
-	// Create an errgroup with a context.
-	// If any goroutine returns an error, 'ctx' will be cancelled.
+	// Learning example:
+	// This file is a small sandbox for understanding how errgroup cancels
+	// sibling goroutines when one of them returns an error.
 	g, ctx := errgroup.WithContext(context.Background())
 
 	// Task 1: Successful task

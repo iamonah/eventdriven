@@ -20,3 +20,20 @@ RabbitMQ provides a clear and practical way to understand the core ideas behind 
 ## Status
 
 This repository is actively evolving as concepts are explored and refined.
+
+## Learning Notes
+
+The root-level `main.go` is kept on purpose as a small concurrency sandbox.
+It is not the main entrypoint for the RabbitMQ example application.
+
+That file exists to practice:
+
+- `errgroup.WithContext`
+- goroutine coordination
+- cancellation when one task fails
+- waiting for concurrent work with `g.Wait()`
+
+The RabbitMQ app entrypoints live in:
+
+- `cmd/producer/main.go`
+- `cmd/consumer/main.go`
